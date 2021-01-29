@@ -5,32 +5,60 @@ const lib = require('./lib');
 const sourceDir = './input';
 const outputDir = './output';
 const fs = require('fs');
-var files = lib.getFiles(lib.getAbsolutePath(sourceDir));
 
 var sizeDefinitions = [{maxWidth: 400, maxHeight: 300}, {maxWidth: 50000, maxHeight: 40000}, {maxWidth: 4000, maxHeight: 3000}, {maxWidth: 20000, maxHeight: 3000}];
 
-lib.getFiles(lib.getAbsolutePath(sourceDir)).forEach(input => { 
-  var uniqPath = input.replace(lib.getAbsolutePath(sourceDir), '');
-  var fileOutputDir = `${lib.getAbsolutePath(outputDir)}${path.dirname(uniqPath)}`;
-  lib.mkdirP(fileOutputDir);
-  var uniqPathNoExt = lib.trimFromEnd(uniqPath, path.extname(uniqPath));
-  sizeDefinitions.forEach(max => {
-    var outputSize = outputWidth(input, max);
-    var filename = `${path.basename(uniqPathNoExt)}-${outputSize.width}w${path.extname(uniqPath)}`;
-    var outPath = `${fileOutputDir}/${filename}`;
-    if (lib.fileIsNewer(input, outPath)) {
-      sharp(input)
-      .rotate()
-      .resize(max.maxWidth, max.maxHeight, {fit: 'inside', withoutEnlargement: true})
-      .toFile(outPath)
-      .then( data => { console.log(outPath) })
-      .catch( err => { console.log(err) });
-    } else {
-      // console.log('exists');
+var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir)).map(srcFilePath => {
+  var relPath = srcFilePath.replace(lib.getAbsolutePath(sourceDir), '');
+  var relPathNoExt = lib.trimFromEnd(relPath, path.extname(relPath));
+  var fileOutputDir = `${lib.getAbsolutePath(outputDir)}${path.dirname(relPath)}`;
+  destPaths = sizeDefinitions.map(sizeDefinition => {
+    var outputSize = outputWidth(srcFilePath, sizeDefinition);
+    var filename = `${path.basename(relPathNoExt)}-${outputSize.width}w${path.extname(relPath)}`;
+    return {
+      path: `${fileOutputDir}/${filename}`,
+      dimensions: sizeDefinition
     }
-    
+  });
+  return {
+    absPath: srcFilePath,
+    relPath: relPath,
+    dest: destPaths,
+    status: 'queued',
+  }
+});
+
+console.log(srcFiles);
+var filePromises = [];
+
+srcFiles.forEach(srcFile => { 
+  srcFile.dest.forEach(destOptions => {
+    filePromises.push(genFile(srcFile.absPath, destOptions.path, destOptions.dimensions))
   });
 });
+
+Promise.all(filePromises).then(response => {
+  console.log(response);
+}).catch(err => {
+  console.log(err)
+})
+
+function genFile(srcPath, destPath, dimensions) {
+  return new Promise((resolve, reject) => {
+    if (!lib.fileIsNewer(srcPath, destPath)) {
+      resolve('skipped')
+    }
+    lib.mkdirP(path.dirname(destPath));
+    sharp(srcPath)
+    .resize(dimensions.maxWidth, dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
+    .toFile(destPath)
+    .then( data => { resolve('created') })
+    .catch( err => { reject(err) });
+  })
+}
+
+// console.log(`Already exist: ${existsCount}`)
+// console.log(`Created/updated: ${createdCount}`)
 
 function outputWidth(input, outputMaxSize) {
   var inputSize = imageSize(input);
@@ -46,6 +74,7 @@ function outputWidth(input, outputMaxSize) {
     return getOther(inputRatio, 'width', outputMaxSize.maxWidth);
   }
 }
+
 function getOther(ratio, side, length) {
   var dimensions = {}
   dimensions[side] = length;
