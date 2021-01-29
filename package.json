@@ -1,0 +1,16 @@
+{
+  "name": "sharp-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "image-size": "^0.9.3",
+    "mkdirp": "^1.0.4",
+    "sharp": "^0.27.0"
+  }
+}
