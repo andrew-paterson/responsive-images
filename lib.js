@@ -306,5 +306,18 @@ module.exports = {
     var imagePathParts = imagePath.split('-');
     var lastPart = imagePathParts[imagePathParts.length-1].replace(/\d{1,}w./, '.');
     return `${imagePathParts.slice(0, -1).join('-')}${lastPart}`;
+  },
+
+  fileIsNewer(srcFile, destFile) {
+    if (!fs.existsSync(srcFile)) {
+      return;
+    }
+    if (!fs.existsSync(destFile)) {
+      return true;
+    }
+    console.log(fs.statSync(srcFile).mtime);
+    console.log(fs.statSync(destFile).mtime);
+    console.log('------------------------------------');
+    return fs.statSync(srcFile).mtime > fs.statSync(destFile).mtime;
   }
 };

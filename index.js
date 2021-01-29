@@ -18,13 +18,17 @@ lib.getFiles(lib.getAbsolutePath(sourceDir)).forEach(input => {
     var outputSize = outputWidth(input, max);
     var filename = `${path.basename(uniqPathNoExt)}-${outputSize.width}w${path.extname(uniqPath)}`;
     var outPath = `${fileOutputDir}/${filename}`;
-
-    sharp(input)
+    if (lib.fileIsNewer(input, outPath)) {
+      sharp(input)
       .rotate()
       .resize(max.maxWidth, max.maxHeight, {fit: 'inside', withoutEnlargement: true})
       .toFile(outPath)
       .then( data => { console.log(outPath) })
       .catch( err => { console.log(err) });
+    } else {
+      console.log('exists');
+    }
+    
   });
 });
 
