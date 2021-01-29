@@ -26,7 +26,7 @@ lib.getFiles(lib.getAbsolutePath(sourceDir)).forEach(input => {
       .then( data => { console.log(outPath) })
       .catch( err => { console.log(err) });
     } else {
-      console.log('exists');
+      // console.log('exists');
     }
     
   });

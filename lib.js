@@ -315,9 +315,6 @@ module.exports = {
     if (!fs.existsSync(destFile)) {
       return true;
     }
-    console.log(fs.statSync(srcFile).mtime);
-    console.log(fs.statSync(destFile).mtime);
-    console.log('------------------------------------');
     return fs.statSync(srcFile).mtime > fs.statSync(destFile).mtime;
   }
 };
