@@ -308,13 +308,15 @@ module.exports = {
     return `${imagePathParts.slice(0, -1).join('-')}${lastPart}`;
   },
 
-  fileIsNewer(srcFile, destFile) {
-    if (!fs.existsSync(srcFile)) {
-      return;
-    }
-    if (!fs.existsSync(destFile)) {
+  fileIsNewer(opts) {
+    if (!fs.existsSync(opts.destPath)) {
       return true;
     }
-    return fs.statSync(srcFile).mtime > fs.statSync(destFile).mtime;
+    if (!fs.existsSync(opts.srcPath)) {
+      return;
+    }
+    const srcMtime = opts.srcMtime || fs.statSync(opts.srcPath).mtime;
+  
+    return srcMtime > fs.statSync(opts.destPath).mtime;
   }
 };

@@ -22,15 +22,32 @@ module.exports = function(settings) {
     });
     return {
       absPath: srcFilePath,
+      srcMtime: fs.statSync(srcFilePath).mtime,
       relPath: relPath,
       dest: destPaths,
       status: 'queued',
     }
   });
+  var srcFilePromises = [];
   var filePromises = [];
   srcFiles.forEach(srcFile => { 
+    var widestDimensions = srcFile.dest.sort((a, b) => {
+      return b.dimensions.maxWidth - a.dimensions.maxWidth;
+    })[0].dimensions;
+    srcFilePromises.push({
+      src: srcFile.absPath, 
+      dest: srcFile.absPath, 
+      srcMtime: srcFile.srcMtime,
+      dimensions: widestDimensions
+    });
     srcFile.dest.forEach(destOptions => {
-      filePromises.push(genFile(srcFile.absPath, destOptions.path, destOptions.dimensions))
+      filePromises.push({
+        src: srcFile.absPath, 
+        dest: destOptions.path, 
+        dimensions: destOptions.dimensions,
+        srcMtime: srcFile.srcMtime,
+        skipExisting: true
+      });
     });
   });
   
@@ -45,24 +62,40 @@ module.exports = function(settings) {
     });
     return obj;
   }
-  
-  Promise.all(filePromises).then(response => {
-    console.log(arrayCount(response));
+  Promise.all(srcFilePromises.map(opts => genFile(opts)))
+  .then(srcFileResponses => {
+    Promise.all(filePromises.map(opts => genFile(opts)))
+    .then(response => {
+      console.log(arrayCount(response.concat(srcFileResponses)));
+    });
   }).catch(err => {
     console.log(err)
-  })
+  });
   
-  function genFile(srcPath, destPath, dimensions) {
+  function genFile(opts) {
     return new Promise((resolve, reject) => {
-      if (!lib.fileIsNewer(srcPath, destPath)) {
+      if (opts.skipExisting && !lib.fileIsNewer({srcPath: opts.src, srcMtime: opts.srcMtime, destPath: opts.dest})) {
         resolve('skipped')
       }
-      lib.mkdirP(path.dirname(destPath));
-      sharp(srcPath)
-      .resize(dimensions.maxWidth, dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
-      .toFile(destPath)
-      .then( data => { resolve('created') })
-      .catch( err => { reject(err) });
+      if (opts.src === opts.dest) {
+        sharp(opts.src)
+        .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
+        .toBuffer()
+        .then(buffer => { 
+          sharp(buffer)
+          .toFile(opts.dest)
+          .then( data => { resolve('resized') })
+          .catch( err => { reject(err) });
+        })
+        
+      } else {
+        lib.mkdirP(path.dirname(opts.dest));
+        sharp(opts.src)
+        .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
+        .toFile(opts.dest)
+        .then( data => { resolve('created') })
+        .catch( err => { reject(err) });
+      }
     })
   }
   

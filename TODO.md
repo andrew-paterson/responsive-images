@@ -6,6 +6,8 @@
 * Allow settings from file
 * Resize original images
 * Ignore non images.
+* Pruning orphaned files must know of the sizes settings have changed.
+* Resize original
 
 DONE
 
