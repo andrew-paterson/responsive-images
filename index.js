@@ -8,6 +8,8 @@ module.exports = function(settings) {
   const sourceDir = settings.src;
   const outputDir = settings.dest;
   const sizeDefinitions = settings.sizes;
+  const existingResponsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir));
+  const existingResponsiveDirs = lib.getDirs(lib.getAbsolutePath(outputDir));
   var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir)).map(srcFilePath => {
     var relPath = srcFilePath.replace(lib.getAbsolutePath(sourceDir), '');
     var relPathNoExt = lib.trimFromEnd(relPath, path.extname(relPath));
@@ -16,7 +18,7 @@ module.exports = function(settings) {
       var outputSize = outputWidth(srcFilePath, sizeDefinition);
       var filename = `${path.basename(relPathNoExt)}-${outputSize.width}w${path.extname(relPath)}`;
       return {
-        path: `${fileOutputDir}/${filename}`,
+        path: `${fileOutputDir}${lib.conditionalSlash(fileOutputDir, 'end')}${filename}`,
         dimensions: sizeDefinition
       }
     });
@@ -28,18 +30,23 @@ module.exports = function(settings) {
       status: 'queued',
     }
   });
+  var outputResponsiveImages = [];
+  var outputResponsiveDirs = [];
   var srcFilePromises = [];
   var filePromises = [];
   srcFiles.forEach(srcFile => { 
     var widestDimensions = srcFile.dest.sort((a, b) => {
       return b.dimensions.maxWidth - a.dimensions.maxWidth;
     })[0].dimensions;
-    srcFilePromises.push({
-      src: srcFile.absPath, 
-      dest: srcFile.absPath, 
-      srcMtime: srcFile.srcMtime,
-      dimensions: widestDimensions
-    });
+    const srcImageSize =  imageSize(srcFile.absPath);
+    if (srcImageSize.height > widestDimensions.maxHeight || srcImageSize.width > widestDimensions.maxWidth) {
+      srcFilePromises.push({
+        src: srcFile.absPath, 
+        dest: srcFile.absPath, 
+        srcMtime: srcFile.srcMtime,
+        dimensions: widestDimensions
+      });
+    }
     srcFile.dest.forEach(destOptions => {
       filePromises.push({
         src: srcFile.absPath, 
@@ -48,6 +55,8 @@ module.exports = function(settings) {
         srcMtime: srcFile.srcMtime,
         skipExisting: true
       });
+      outputResponsiveImages.push(destOptions.path);
+      outputResponsiveDirs.push(path.dirname(destOptions.path));
     });
   });
   
@@ -124,47 +133,17 @@ module.exports = function(settings) {
     }
     return dimensions;
   }
-  
-  // Remove orphaned folders from responsive images directory
-  var responsiveImageDirs = lib.getDirs(lib.getAbsolutePath(outputDir)).map(dirPath => {
-    return {
-      absPath: dirPath,
-      relPath: dirPath.replace(lib.getAbsolutePath(outputDir), '')
-    }
-  });
-  
-  var originalImageDirs = lib.getDirs(lib.getAbsolutePath(sourceDir)).map(dirPath => {
-    return {
-      absPath: dirPath,
-      relPath: dirPath.replace(lib.getAbsolutePath(sourceDir), '')
-    }
-  });
-  
-  responsiveImageDirs.forEach(resp => {
-    if (!originalImageDirs.find(orig => orig.relPath === resp.relPath)) {
-      lib.deleteFolderRecursively(resp.absPath);
-    }
-  });
-  
+    
   // Remove orphaned files from responsive images directory
-  var responsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir)).map(imagePath => {
-    return {
-      absPath: imagePath,
-      relPath: imagePath.replace(lib.getAbsolutePath(outputDir), '')
-    }
+  var orphanedImages = existingResponsiveImages.filter(existing => outputResponsiveImages.indexOf(existing) < 0);
+  orphanedImages.forEach(filePath => {
+    fs.unlinkSync(filePath);
   });
-  
-  var originalImages = lib.getFiles(lib.getAbsolutePath(sourceDir)).map(imagePath => {
-    return {
-      absPath: imagePath,
-      relPath: imagePath.replace(lib.getAbsolutePath(sourceDir), '')
-    }
-  });
-  
-  responsiveImages.forEach(resp => {
-    if (!originalImages.find(orig => orig.relPath === lib.unsizedImagePath(resp.relPath))) {
-      fs.unlinkSync(resp.absPath);
-    }
-  });
-}
+  console.log(`Deleted ${orphanedImages.length} orphaned images.`);
 
+  var orphanedDirs = existingResponsiveDirs.filter(existing => outputResponsiveDirs.indexOf(existing) < 0);
+  orphanedDirs.forEach(dirPath => {
+    lib.deleteFolderRecursively(dirPath);
+  });
+  console.log(`Deleted ${orphanedDirs.length} orphaned directories.`);
+}

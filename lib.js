@@ -318,5 +318,9 @@ module.exports = {
     const srcMtime = opts.srcMtime || fs.statSync(opts.srcPath).mtime;
   
     return srcMtime > fs.statSync(opts.destPath).mtime;
+  },
+
+  conditionalSlash(string, position) {
+    return (position === 'end' && string.endsWith('/')) || (position === 'start' && string.startsWith('/')) ? '' : '/';
   }
 };

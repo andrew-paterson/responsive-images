@@ -5,13 +5,14 @@ Given a `src` directory of images, the script creates a clone of the directory a
 ## Features
 
 * Appends the output width to the end of each filename. For example `image.jpg` becomes `image-600w.jpg`.
-* Images will never be upscaled. If the image is smaller than the domensions provided, it will remain at that size.
-* With each responsive image generated, the aspect ration will be mainained, and the image will be resized so that both the height and width are less than or equal to the relevant size setting.
-* Orphaned files in the responsive image directory are deleted.
+* Images will never be upscaled. If the image is smaller than the dimensions provided, it will remain at that size.
+* With each responsive image generated, the aspect ratio will be maintained, and the image will be resized so that both the height and width are less than or equal to the relevant size setting.
+* Orphaned files and directories in the responsive image directory are deleted.
+* The original version of the image is resized so that it fits into the dimensions with the biggest `maxWidth` value.
 
 ## Installation
 
-`npm install git+ssh://git@github.com/:andrew-paterson/responsive-images.git`
+`npm install git+ssh://git@github.com/andrew-paterson/responsive-images.git`
 
 ## Usage
 
