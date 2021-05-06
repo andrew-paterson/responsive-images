@@ -9,8 +9,6 @@
   "author": "Andrew Paterson",
   "license": "MIT",
   "dependencies": {
-    "exif": "^0.6.0",
-    "exif-reader": "^1.0.3",
     "image-size": "^0.9.3",
     "is-image": "^3.0.0",
     "mkdirp": "^1.0.4",
