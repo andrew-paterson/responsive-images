@@ -1,16 +1,37 @@
 {
-  "name": "responsive-images",
+  "name": "responsive-image-directory",
   "version": "0.0.2",
-  "description": "",
+  "description": "Given a `src` directory of images, the script creates a clone of the directory and its contained images at the provided `dest` path, but with multiple sizes of each image, based on the sizes specified in the settings.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Andrew Paterson",
+  "license": "MIT",
   "dependencies": {
+    "exif": "^0.6.0",
+    "exif-reader": "^1.0.3",
     "image-size": "^0.9.3",
+    "is-image": "^3.0.0",
     "mkdirp": "^1.0.4",
+    "request": "^2.88.2",
     "sharp": "^0.27.0"
-  }
+  },
+  "directories": {
+    "test": "test"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andrew-paterson/responsive-images.git"
+  },
+  "keywords": [
+    "responsive",
+    "images",
+    "directory"
+  ],
+  "bugs": {
+    "url": "https://github.com/andrew-paterson/responsive-images/issues"
+  },
+  "homepage": "https://github.com/andrew-paterson/responsive-images#readme"
 }

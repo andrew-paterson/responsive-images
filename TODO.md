@@ -4,8 +4,7 @@
 * Ability to process images in batches.
 * Better console feedback
 * Exit node correctly when complete
-* Ignore non images.
-
+* Option to save originals in a location
 # DONE
 
 * Allow settings from file
@@ -19,4 +18,5 @@
   * Compare and delete that way.
 * Resize original images fit in the set of dimensions with the biggest `maxwidth` value.
 * Skip resizing of original if it is already the appropriate size- ie both width and height are <= maxWidth and maxHeight
-
+* Ignore non images.
+* Retain metadata

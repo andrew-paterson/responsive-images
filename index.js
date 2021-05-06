@@ -3,6 +3,7 @@ const imageSize = require('image-size');
 const path = require('path');
 const lib = require('./lib');
 const fs = require('fs');
+const isImage = require('is-image');
 
 module.exports = function(settings) {
   const sourceDir = settings.src;
@@ -10,7 +11,9 @@ module.exports = function(settings) {
   const sizeDefinitions = settings.sizes;
   const existingResponsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir));
   const existingResponsiveDirs = lib.getDirs(lib.getAbsolutePath(outputDir));
-  var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir)).map(srcFilePath => {
+  var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
+  .filter(filePath => isImage(filePath))
+  .map(srcFilePath => {
     var relPath = srcFilePath.replace(lib.getAbsolutePath(sourceDir), '');
     var relPathNoExt = lib.trimFromEnd(relPath, path.extname(relPath));
     var fileOutputDir = `${lib.getAbsolutePath(outputDir)}${path.dirname(relPath)}`;
@@ -86,21 +89,24 @@ module.exports = function(settings) {
       if (opts.skipExisting && !lib.fileIsNewer({srcPath: opts.src, srcMtime: opts.srcMtime, destPath: opts.dest})) {
         resolve('skipped')
       }
-      if (opts.src === opts.dest) {
+      if (opts.src === opts.dest) {// To resize and replave the source image, you must first create a resized buffer of it and then overwrite the image with the buffer.
         sharp(opts.src)
         .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
+        .withMetadata()
         .toBuffer()
         .then(buffer => { 
           sharp(buffer)
+          .withMetadata()
           .toFile(opts.dest)
           .then( data => { resolve('resized') })
           .catch( err => { reject(err) });
         })
         
-      } else {
+      } else { // For image clones
         lib.mkdirP(path.dirname(opts.dest));
         sharp(opts.src)
         .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
+        .withMetadata()
         .toFile(opts.dest)
         .then( data => { resolve('created') })
         .catch( err => { reject(err) });
@@ -147,3 +153,4 @@ module.exports = function(settings) {
   });
   console.log(`Deleted ${orphanedDirs.length} orphaned directories.`);
 }
+
