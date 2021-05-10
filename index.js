@@ -9,8 +9,6 @@ module.exports = function(settings) {
   const sourceDir = settings.src;
   const outputDir = settings.dest;
   const sizeDefinitions = settings.sizes;
-  const existingResponsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir));
-  const existingResponsiveDirs = lib.getDirs(lib.getAbsolutePath(outputDir));
   var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
   .filter(filePath => isImage(filePath))
   .map(srcFilePath => {
@@ -59,7 +57,9 @@ module.exports = function(settings) {
         skipExisting: true
       });
       outputResponsiveImages.push(destOptions.path);
-      outputResponsiveDirs.push(path.dirname(destOptions.path));
+      if (outputResponsiveDirs.indexOf(path.dirname(destOptions.path)) < 0) {
+        outputResponsiveDirs.push(path.dirname(destOptions.path));
+      }
     });
   });
   
@@ -78,6 +78,10 @@ module.exports = function(settings) {
   .then(srcFileResponses => {
     Promise.all(filePromises.map(opts => genFile(opts)))
     .then(response => {
+      pruneImages();
+      return response;
+    })
+    .then(response => {
       console.log(arrayCount(response.concat(srcFileResponses)));
     });
   }).catch(err => {
@@ -87,9 +91,10 @@ module.exports = function(settings) {
   function genFile(opts) {
     return new Promise((resolve, reject) => {
       if (opts.skipExisting && !lib.fileIsNewer({srcPath: opts.src, srcMtime: opts.srcMtime, destPath: opts.dest})) {
-        resolve('skipped')
+        resolve('skipped');
+        return;
       }
-      if (opts.src === opts.dest) {// To resize and replave the source image, you must first create a resized buffer of it and then overwrite the image with the buffer.
+      if (opts.src === opts.dest) {// To resize and replace the source image, you must first create a resized buffer of it and then overwrite the image with the buffer.
         sharp(opts.src)
         .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
         .withMetadata()
@@ -100,7 +105,7 @@ module.exports = function(settings) {
           .toFile(opts.dest)
           .then( data => { resolve('resized') })
           .catch( err => { reject(err) });
-        })
+        });
         
       } else { // For image clones
         lib.mkdirP(path.dirname(opts.dest));
@@ -139,18 +144,25 @@ module.exports = function(settings) {
     }
     return dimensions;
   }
-    
-  // Remove orphaned files from responsive images directory
-  var orphanedImages = existingResponsiveImages.filter(existing => outputResponsiveImages.indexOf(existing) < 0);
-  orphanedImages.forEach(filePath => {
-    fs.unlinkSync(filePath);
-  });
-  console.log(`Deleted ${orphanedImages.length} orphaned images.`);
 
-  var orphanedDirs = existingResponsiveDirs.filter(existing => outputResponsiveDirs.indexOf(existing) < 0);
-  orphanedDirs.forEach(dirPath => {
-    lib.deleteFolderRecursively(dirPath);
-  });
-  console.log(`Deleted ${orphanedDirs.length} orphaned directories.`);
+  function pruneImages() {
+    const existingResponsiveDirs = lib.getDirs(lib.getAbsolutePath(outputDir));
+    var orphanedDirs = existingResponsiveDirs.filter(existingDir => {
+      return !outputResponsiveImages.find(existingImage => existingImage.startsWith(existingDir));
+    });
+    orphanedDirs.forEach(dirPath => {
+      lib.deleteFolderRecursively(dirPath);
+    });
+    console.log(`Deleted ${orphanedDirs.length} orphaned directories recursively.`);
+    // Remove orphaned files from responsive images directory
+    const existingResponsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir)).sort();
+    var orphanedImages = existingResponsiveImages.filter(existing => outputResponsiveImages.indexOf(existing) < 0);
+    orphanedImages.forEach(filePath => {
+      fs.unlinkSync(filePath);
+    });
+    console.log(`Deleted ${orphanedImages.length} orphaned images.`);
+
+    
+  }
 }
 
