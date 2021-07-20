@@ -17,7 +17,8 @@ module.exports = function(settings) {
     var fileOutputDir = `${lib.getAbsolutePath(outputDir)}${path.dirname(relPath)}`;
     destPaths = sizeDefinitions.map(sizeDefinition => {
       var outputSize = outputWidth(srcFilePath, sizeDefinition);
-      var filename = `${path.basename(relPathNoExt)}-${outputSize.width}w${path.extname(relPath)}`;
+      const suffix = sizeDefinition.suffix ? sizeDefinition.suffix.replace('{imageHeight}', outputSize.height).replace('{imageWidth}', outputSize.width) : `-${outputSize.width}w`;
+      var filename = `${path.basename(relPathNoExt)}${suffix}${path.extname(relPath)}`;
       return {
         path: `${fileOutputDir}${lib.conditionalSlash(fileOutputDir, 'end')}${filename}`,
         dimensions: sizeDefinition
@@ -39,8 +40,13 @@ module.exports = function(settings) {
     var widestDimensions = srcFile.dest.sort((a, b) => {
       return b.dimensions.maxWidth - a.dimensions.maxWidth;
     })[0].dimensions;
-    const srcImageSize =  imageSize(srcFile.absPath);
-    if (srcImageSize.height > widestDimensions.maxHeight || srcImageSize.width > widestDimensions.maxWidth) {
+    let srcImageSize;
+    try {
+      srcImageSize = imageSize(srcFile.absPath);
+    }  catch (err) {
+      srcImageSize = {};
+    }
+    if (settings.resizeOriginal && (srcImageSize.height > widestDimensions.maxHeight || srcImageSize.width > widestDimensions.maxWidth )) {
       srcFilePromises.push({
         src: srcFile.absPath, 
         dest: srcFile.absPath, 
@@ -96,6 +102,7 @@ module.exports = function(settings) {
       }
       if (opts.src === opts.dest) {// To resize and replace the source image, you must first create a resized buffer of it and then overwrite the image with the buffer.
         sharp(opts.src)
+        .jpeg({ quality: 100, progressive: true })
         .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
         .withMetadata()
         .toBuffer()
@@ -110,6 +117,7 @@ module.exports = function(settings) {
       } else { // For image clones
         lib.mkdirP(path.dirname(opts.dest));
         sharp(opts.src)
+        .jpeg({ quality: 100, progressive: true })
         .resize(opts.dimensions.maxWidth, opts.dimensions.maxHeight, {fit: 'inside', withoutEnlargement: true})
         .withMetadata()
         .toFile(opts.dest)
@@ -120,7 +128,13 @@ module.exports = function(settings) {
   }
   
   function outputWidth(input, outputMaxSize) {
-    var inputSize = imageSize(input);
+    let inputSize;
+    try {
+      inputSize = imageSize(input);
+    }  catch (err) {
+      inputSize = {};
+    }
+
     var inputRatio = inputSize.width/inputSize.height;
     var heightExcess = inputSize.height/outputMaxSize.maxHeight;
     var widthExcess = inputSize.width/outputMaxSize.maxWidth;
