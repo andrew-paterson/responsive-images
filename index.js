@@ -67,14 +67,18 @@ module.exports = function(settings) {
 
   const queue = srcFiles.filter(srcFile => srcFile.dest.length > 0);
   (async () => {
-    for (var srcFile of queue) {
-      await processImage(srcFile).then(res => {}).catch(err => {});
+    try {
+      for (var srcFile of queue) {
+        await processImage(srcFile);
+      }
+      if (settings.resizeOriginal) {
+        resizeOriginals();
+      }
+      pruneImages();
+      updateLog(resultSummary, true);
+    } catch(err) {
+      console.log(err)
     }
-    if (settings.resizeOriginal) {
-      resizeOriginals();
-    }
-    pruneImages();
-    updateLog(resultSummary, true);
   })();
 
   // const fileProcessors = queue.map(srcFile => processImage(srcFile));
@@ -160,13 +164,21 @@ module.exports = function(settings) {
     }
     process.stdout.clearLine();
     process.stdout.cursorTo(0);
-   
+
     if (isFinal) {
       if (!text.length) {
         console.log(chalk.yellow('Responsive image directory - no images to process.'))
       } else {
-        process.stdout.write('Responsive image directory - ' + text.join(', ') + '\n') + 'Finshed';
-        console.log(resultSummary)
+        process.stdout.write('Responsive image directory finished - ' + text.join(', ') + '\n');
+        if (settings.logPath) {
+          fs.writeFile(settings.logPath, JSON.stringify(resultSummary, null, 2), (err, data) => {
+            if (err) {
+              console.log(err)
+            } else {
+              console.log(`Results logged at ${path.resolve(process.cwd(), settings.logPath)}.`)
+            }
+          })
+        }
       }
     } else {
       process.stdout.write('Responsive image directory - ' + text.join(', '));
@@ -177,9 +189,11 @@ module.exports = function(settings) {
     return new Promise((resolve, reject) => {
       const run = function(opts) {
         opts.attempts = opts.attempts ||[];
+        
         genImage(opts).then(data => {
           opts.attempts.push({
-            quality: Math.floor(opts.quality),
+            quality: opts.quality,
+            // quality: Math.floor(opts.quality),
             bytes: data.size,
             increment: opts.increment
           });
@@ -237,7 +251,8 @@ module.exports = function(settings) {
       const sharpInstance = sharp(opts.src);
       sharpInstance.resize(opts.dimensions.width, opts.dimensions.height, {fit: 'inside', withoutEnlargement: true});
       if (opts.quality) {
-        sharpInstance.jpeg({ quality: Math.floor(opts.quality), progressive: true });
+        opts.quality = Math.floor(opts.quality);
+        sharpInstance.jpeg({ quality: opts.quality, progressive: true });
       }
       sharpInstance.withMetadata()
       .toFile(opts.dest)
@@ -249,11 +264,14 @@ module.exports = function(settings) {
   }
 
   function cloneImage(opts) {
+    // if (opts.quality) {
+    //   opts.quality = Math.floor(opts.quality);
+    // }
     return new Promise((resolve, reject) => {
       genImage(opts).then(data => {
         resultSummary.newClones.push({
           file: opts.dest,
-          quality: Math.floor(opts.quality),
+          quality: opts.quality,
           bytes: data.size
         });
         updateLog(resultSummary);
