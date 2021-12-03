@@ -8,19 +8,25 @@ const  uniqBy = require('lodash.uniqby');
 const chalk = require('chalk');
 
 module.exports = function(settings) {
-  settings.minJpegQuality = settings.minJpegQuality || 1;
-  settings.maxBytes = settings.maxBytes || 9999999999999999999;
   const sourceDir = settings.src;
   const outputDir = settings.dest;
   const sizeDefinitions = settings.sizes;
   const maxQuality = settings.maxQuality || 90;
+  const minJpegQuality = settings.minJpegQuality || 1;
+  const maxBytesGuide = settings.maxBytesGuide || {};
+  let maxBytesPerPixel;
+  if (maxBytesGuide.width && maxBytesGuide.height && maxBytesGuide.maxBytes) {
+    maxBytesPerPixel = maxBytesGuide.maxBytes/(maxBytesGuide.width*maxBytesGuide.height);
+  } else {
+    maxBytesPerPixel = 999999999;
+  }
   const resultSummary = {
     deletedImages: [],
     deletedDirs: [],
     newClones: [],
     resizedOriginals: [],
   };
-  var srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
+  const srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
   .filter(filePath => isImage(filePath))
   .filter(filePath => {
     try {
@@ -104,7 +110,7 @@ module.exports = function(settings) {
         dest: widestDest.path, 
         srcMtime: srcFile.srcMtime,
         dimensions: widestDest.actualDimensions,
-        maxBytes: settings.maxBytes,
+        maxBytes: maxBytesPerPixel * (widestDest.actualDimensions.width * widestDest.actualDimensions.height),
         quality: settings.maxQuality
       }
       createLargestClone(widestCloneOptions)
@@ -193,14 +199,13 @@ module.exports = function(settings) {
         genImage(opts).then(data => {
           opts.attempts.push({
             quality: opts.quality,
-            // quality: Math.floor(opts.quality),
             bytes: data.size,
             increment: opts.increment
           });
           if (data.size > opts.maxBytes) {
-            if ((opts.quality || maxQuality) > settings.minJpegQuality ) {
+            if ((opts.quality || maxQuality) > minJpegQuality ) {
               opts.quality = opts.quality || maxQuality;
-              opts.quality = opts.quality - opts.increment > settings.minJpegQuality ? opts.quality - opts.increment : settings.minJpegQuality;
+              opts.quality = opts.quality - opts.increment > minJpegQuality ? opts.quality - opts.increment : minJpegQuality;
               run(opts)
             } else {
               resultSummary.newClones.push({
@@ -225,7 +230,7 @@ module.exports = function(settings) {
               const closestTooHigh = opts.attempts.filter(attempt => attempt.bytes > opts.maxBytes).sort((a,b) => a.bytes - b.bytes)[0];
               if (closestTooHigh && opts.quality && opts.increment > 5 ) {
                 opts.increment = opts.increment/5;
-                opts.quality = closestTooHigh.quality || maxQuality - opts.increment > settings.minJpegQuality ? closestTooHigh.quality - opts.increment : settings.minJpegQuality;
+                opts.quality = closestTooHigh.quality || maxQuality - opts.increment > minJpegQuality ? closestTooHigh.quality - opts.increment : minJpegQuality;
                 run(opts);
               } else {
                 resultSummary.newClones.push({
