@@ -8,15 +8,17 @@ const  uniqBy = require('lodash.uniqby');
 const chalk = require('chalk');
 
 module.exports = function(settings) {
+  const startDate = new Date();
   const sourceDir = settings.src;
   const outputDir = settings.dest;
   const sizeDefinitions = settings.sizes;
   const maxQuality = settings.maxQuality || 90;
   const minJpegQuality = settings.minJpegQuality || 1;
-  const maxBytesGuide = settings.maxBytesGuide || {};
+  const batchSize = settings.batchSize || 10;
+  const dynamicQualityParams = settings.dynamicQualityParams || {};
   let maxBytesPerPixel;
-  if (maxBytesGuide.width && maxBytesGuide.height && maxBytesGuide.maxBytes) {
-    maxBytesPerPixel = maxBytesGuide.maxBytes/(maxBytesGuide.width*maxBytesGuide.height);
+  if (dynamicQualityParams.width && dynamicQualityParams.height && dynamicQualityParams.maxBytes) {
+    maxBytesPerPixel = dynamicQualityParams.maxBytes/(dynamicQualityParams.width*dynamicQualityParams.height);
   } else {
     maxBytesPerPixel = 999999999;
   }
@@ -25,6 +27,7 @@ module.exports = function(settings) {
     deletedDirs: [],
     newClones: [],
     resizedOriginals: [],
+    failed: []
   };
   const srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
   .filter(filePath => isImage(filePath))
@@ -53,29 +56,61 @@ module.exports = function(settings) {
         actualDimensions: outputSize
       }
     }), 'path');
-    (destPaths || []).sort((a, b) => {
-      return b.actualDimensions.width - a.actualDimensions.width;
-    })[0].widest = true;
+    // (destPaths || []).sort((a, b) => {
+    //   return b.actualDimensions.width - a.actualDimensions.width;
+    // })[0].widest = true;
+    (getWidest(destPaths) || {}).widestOverall = true;
+
 
     const queuedFileDefs = destPaths.filter(destPath => {
       if (settings.skipExisting && !lib.fileIsNewer({srcPath: srcFilePath, srcMtime: srcMtime, destPath: destPath.path})) { return false }
       return true;
     });
+
+    // if (queuedFileDefs.length) {
+    //   queuedFileDefs.sort((a, b) => {
+    //     return b.actualDimensions.width - a.actualDimensions.width;
+    //   })[0].widest = true;
+    // }
+    (getWidest(queuedFileDefs) || {}).widestQueued = true;
+
     return {
       absPath: srcFilePath,
       srcMtime: srcMtime,
+      srcBytes : srcFileStats.size,
       relPath: relPath,
       dest: queuedFileDefs,
       allSizes: destPaths,
       originalImageSize: imageSize(srcFilePath)
     }
   });
+  srcFiles.forEach(srcFile => {
+    if (srcFile.dest.length) {
+      console.log(srcFile.dest)
+  
+    }
+  })
+
+
 
   const queue = srcFiles.filter(srcFile => srcFile.dest.length > 0);
+  const batches = chunkArray(queue, batchSize);
+
+  let totalClones = 0;
+  let newClones = 0;
+
+  srcFiles.forEach(srcFile => {
+    totalClones += srcFile.allSizes.length;
+    newClones += srcFile.dest.length;
+  });
+
+  console.log(chalk.green(`${srcFiles.length} original images in `) + `${path.resolve(process.cwd(), sourceDir)}` + chalk.green(` will result in ${totalClones} responsive images in`) + ` ${path.resolve(process.cwd(), outputDir)}.`);
+  console.log(chalk.green(totalClones - newClones)  + ' already exist', chalk.green(newClones) + ' will be generated now.');
+
   (async () => {
     try {
-      for (var srcFile of queue) {
-        await processImage(srcFile);
+      for (var batch of batches) {
+        await processBatch(batch).then().catch(err => console.log(err));
       }
       if (settings.resizeOriginal) {
         resizeOriginals();
@@ -83,40 +118,61 @@ module.exports = function(settings) {
       pruneImages();
       updateLog(resultSummary, true);
     } catch(err) {
-      console.log(err)
+      console.log(chalk.red(err))
     }
   })();
 
-  // const fileProcessors = queue.map(srcFile => processImage(srcFile));
-  // Promise.all(fileProcessors).then(res => {
-  //   if (settings.resizeOriginal) {
-  //     resizeOriginals();
-  //   }
-  //   pruneImages();
-  //   updateLog(resultSummary, true);
-  // }).catch(err => {
-  //   console.log(err)
-  // });
+  function getWidest(fileDefs) {
+    if (fileDefs.length) {
+      return fileDefs.sort((a, b) => {
+        return b.actualDimensions.width - a.actualDimensions.width;
+      })[0];
+    }
+    return;
+  }
+
+  function processBatch(batch) {
+    return new Promise((resolve, reject) => {
+      const filePromises = batch.map(srcFile => processImage(srcFile));
+      Promise.all(filePromises).then(res => {
+        resolve(res);
+      }).catch(err => {
+        reject(err)
+      });
+    });
+  }
+
+  function chunkArray(arr, chunkSize) {
+    return arr.map( function(e,i){ 
+      return i%chunkSize===0 ? arr.slice(i,i+chunkSize) : null; 
+    }).filter(function(e){ return e; });
+  }
+
 
   function processImage(srcFile) {
-    // console.log(`Start ${path.basename(srcFile.absPath)}`);
-    
     return new Promise((resolve, reject) => {
-      const widestDest = srcFile.allSizes.find(item => {
-        return item.widest;
+      const widestDest = srcFile.dest.find(item => {
+        return item.widestQueued;
       });
+      const generalMaxBytes = maxBytesPerPixel * (widestDest.actualDimensions.width * widestDest.actualDimensions.height);
+      let maxBytes;
+      if (generalMaxBytes > srcFile.srcBytes) {
+        maxBytes = srcFile.srcBytes;
+      } else {
+        maxBytes = generalMaxBytes;
+      }
       const widestCloneOptions = {
         src: srcFile.absPath, 
         dest: widestDest.path, 
         srcMtime: srcFile.srcMtime,
         dimensions: widestDest.actualDimensions,
-        maxBytes: maxBytesPerPixel * (widestDest.actualDimensions.width * widestDest.actualDimensions.height),
+        maxBytes: maxBytes,
         quality: settings.maxQuality
       }
       createLargestClone(widestCloneOptions)
       .then(createLargestCloneResult => {
         const others = srcFile.dest.filter(item => {
-          return !item.widest;
+          return !item.widestQueued;
         });
         const filePromises = [];
         others.forEach(destOptions => {
@@ -133,8 +189,6 @@ module.exports = function(settings) {
         .then(response => {
           updateLog(resultSummary);
           resolve(response);
-          // console.log(`Finish ${path.basename(srcFile.absPath)}`);
-
         }).catch(err => reject(err));
       }).catch(err => {
         reject(err)
@@ -144,10 +198,10 @@ module.exports = function(settings) {
   
   function resizeOriginals() {
     srcFiles.forEach(srcFile => {
-      const widestDest = srcFile.allSizes.find(item => item.widest);
-      if (srcFile.originalImageSize.width > widestDest.dimensions.width) {
+      const widestDest = srcFile.allSizes.find(item => item.widestOverall);
+      if (srcFile.originalImageSize.width > widestDest.actualDimensions.width) {
         try {
-          fs.copyFileSync(createLargestCloneResult.dest, srcFile.absPath);
+          fs.copyFileSync(widestDest.path, srcFile.absPath);
           resultSummary.resizedOriginals.push(srcFile.absPath);
           updateLog(resultSummary);
         } catch(err) {
@@ -160,34 +214,42 @@ module.exports = function(settings) {
   function updateLog(resultSummary, isFinal) {
     let text = [];
     if (resultSummary.resizedOriginals.length) {
-      text.push(chalk.cyan(`downsized ${resultSummary.resizedOriginals.length} originals` ));
+      text.push(chalk.cyan(`${resultSummary.resizedOriginals.length} originals downsized` ));
     }
     if (resultSummary.newClones.length) {
-      text.push(chalk.green(`created ${resultSummary.newClones.length} new clones of ${queue.length} images` ));
+      text.push(chalk.green(`${resultSummary.newClones.length} of ${newClones} new clones generated, based on ${queue.length} original images` ));
     }
     if (resultSummary.deletedImages.length) {
-      text.push(chalk.magenta(`deleted ${resultSummary.deletedImages.length} orphaned clones` ));
+      text.push(chalk.magenta(`${resultSummary.deletedImages.length} orphaned images deleted` ));
+    }
+    if (resultSummary.deletedDirs.length) {
+      text.push(chalk.magenta(`${resultSummary.deletedDirs.length} orphaned directories deleted` ));
     }
     process.stdout.clearLine();
     process.stdout.cursorTo(0);
-
+    const endDate = new Date();
+    const elapsed = endDate.getTime() - startDate.getTime();
     if (isFinal) {
       if (!text.length) {
         console.log(chalk.yellow('Responsive image directory - no images to process.'))
       } else {
-        process.stdout.write('Responsive image directory finished - ' + text.join(', ') + '\n');
+        
+        process.stdout.write(text.join(', ') + ` in ${lib.timeConversion(elapsed)}` +  '\n');
         if (settings.logPath) {
           fs.writeFile(settings.logPath, JSON.stringify(resultSummary, null, 2), (err, data) => {
             if (err) {
               console.log(err)
             } else {
-              console.log(`Results logged at ${path.resolve(process.cwd(), settings.logPath)}.`)
+              console.log(`Finished - results logged at ${path.resolve(process.cwd(), settings.logPath)}.`)
             }
-          })
+          });
+        } else {
+          console.log('Finished')
         }
+        
       }
     } else {
-      process.stdout.write('Responsive image directory - ' + text.join(', '));
+      process.stdout.write(text.join(', ') + ` in ${lib.timeConversion(elapsed)}`);
     }
   }
 
@@ -269,9 +331,6 @@ module.exports = function(settings) {
   }
 
   function cloneImage(opts) {
-    // if (opts.quality) {
-    //   opts.quality = Math.floor(opts.quality);
-    // }
     return new Promise((resolve, reject) => {
       genImage(opts).then(data => {
         resultSummary.newClones.push({
@@ -282,6 +341,11 @@ module.exports = function(settings) {
         updateLog(resultSummary);
         resolve(opts);
       }).catch(err => {
+        resultSummary.failed.push({
+          file: opts.dest,
+          error: err
+        });
+        updateLog(resultSummary);
         reject(err);
       })
     });

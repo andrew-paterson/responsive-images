@@ -322,5 +322,33 @@ module.exports = {
 
   conditionalSlash(string, position) {
     return (position === 'end' && string.endsWith('/')) || (position === 'start' && string.startsWith('/')) ? '' : '/';
+  },
+
+  timeConversion(duration) {
+    if (duration < 1000) {
+      return `${Math.round(parseFloat(duration/1000) * 100) / 100}s`;
+    }
+    const portions = [];
+  
+    const msInHour = 1000 * 60 * 60;
+    const hours = Math.trunc(duration / msInHour);
+    if (hours > 0) {
+      portions.push(hours + 'h');
+      duration = duration - (hours * msInHour);
+    }
+  
+    const msInMinute = 1000 * 60;
+    const minutes = Math.trunc(duration / msInMinute);
+    if (minutes > 0) {
+      portions.push(minutes + 'm');
+      duration = duration - (minutes * msInMinute);
+    }
+  
+    const seconds = Math.trunc(duration / 1000);
+    if (seconds > 0) {
+      portions.push(seconds + 's');
+    }
+  
+    return portions.join(' ');
   }
 };

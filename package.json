@@ -1,6 +1,6 @@
 {
   "name": "responsive-image-directory",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Given a `src` directory of images, the script creates a clone of the directory and its contained images at the provided `dest` path, but with multiple sizes of each image, based on the sizes specified in the settings.",
   "main": "index.js",
   "scripts": {
@@ -15,12 +15,14 @@
     "lodash.uniqby": "^4.7.0",
     "mkdirp": "^1.0.4",
     "request": "^2.88.2",
-    "sharp": "^0.27.0"
+    "sharp": "^0.27.0",
+    "tag-and-release": "^1.0.14"
   },
   "directories": {
     "test": "test"
   },
-  "devDependencies": {},
+  "devDependencies": {
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/andrew-paterson/responsive-images.git"
