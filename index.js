@@ -6,405 +6,46 @@ const fs = require('fs');
 const isImage = require('is-image');
 const  uniqBy = require('lodash.uniqby');
 const chalk = require('chalk');
+const generateImages = require('./generate-images');
 
-module.exports = function(settings) {
-  const startDate = new Date();
-  const sourceDir = settings.src;
-  const outputDir = settings.dest;
-  const sizeDefinitions = settings.sizes;
-  const maxQuality = settings.maxQuality || 90;
-  const minJpegQuality = settings.minJpegQuality || 1;
-  const batchSize = settings.batchSize || 10;
-  const dynamicQualityParams = settings.dynamicQualityParams || {};
-  let maxBytesPerPixel;
-  if (dynamicQualityParams.width && dynamicQualityParams.height && dynamicQualityParams.maxBytes) {
-    maxBytesPerPixel = dynamicQualityParams.maxBytes/(dynamicQualityParams.width*dynamicQualityParams.height);
-  } else {
-    maxBytesPerPixel = 999999999;
-  }
-  const resultSummary = {
-    deletedImages: [],
-    deletedDirs: [],
-    newClones: [],
-    resizedOriginals: [],
-    failed: []
-  };
-  const srcFiles = lib.getFiles(lib.getAbsolutePath(sourceDir))
-  .filter(filePath => isImage(filePath))
-  .filter(filePath => {
-    try {
-      imageSize(filePath);
-      return true;
-    } catch(err) {
-      return false;
-    }
-  })
-  .map(srcFilePath => {
-    var relPath = srcFilePath.replace(lib.getAbsolutePath(sourceDir), '');
-    var relPathNoExt = lib.trimFromEnd(relPath, path.extname(relPath));
-    var fileOutputDir = `${lib.getAbsolutePath(outputDir)}${path.dirname(relPath)}`;
-    const srcFileStats = fs.statSync(srcFilePath);
-    var srcMtime = srcFileStats.mtime;
-    destPaths = uniqBy(sizeDefinitions.map(sizeDefinition => {
-      var outputSize = getOutputSize(srcFilePath, sizeDefinition);
-      const suffix = sizeDefinition.suffix ? sizeDefinition.suffix.replace('{imageHeight}', outputSize.height).replace('{imageWidth}', outputSize.width) : `-${outputSize.width}w`;
-      var filename = `${path.basename(relPathNoExt)}${suffix}${path.extname(relPath)}`;
-      const outputPath = `${fileOutputDir}${lib.conditionalSlash(fileOutputDir, 'end')}${filename}`;
-      return {
-        path: outputPath,
-        dimensions: sizeDefinition,
-        actualDimensions: outputSize
-      }
-    }), 'path');
-    // (destPaths || []).sort((a, b) => {
-    //   return b.actualDimensions.width - a.actualDimensions.width;
-    // })[0].widest = true;
-    (getWidest(destPaths) || {}).widestOverall = true;
+module.exports = {
+  generateImages(settings) {
+    return generateImages(settings);
+  },
+  createManifest(settings) {
+    const sourceDir = settings.src;
+    const outputDir = settings.dest;
+    const absSourceDir = path.resolve(process.cwd(), sourceDir);
+    const absOutputDir = path.resolve(process.cwd(), outputDir);
+    const outputFiles = lib.getFiles(lib.getAbsolutePath(outputDir));
 
-
-    const queuedFileDefs = destPaths.filter(destPath => {
-      if (settings.skipExisting && !lib.fileIsNewer({srcPath: srcFilePath, srcMtime: srcMtime, destPath: destPath.path})) { return false }
-      return true;
-    });
-
-    // if (queuedFileDefs.length) {
-    //   queuedFileDefs.sort((a, b) => {
-    //     return b.actualDimensions.width - a.actualDimensions.width;
-    //   })[0].widest = true;
-    // }
-    (getWidest(queuedFileDefs) || {}).widestQueued = true;
-
-    return {
-      absPath: srcFilePath,
-      srcMtime: srcMtime,
-      srcBytes : srcFileStats.size,
-      relPath: relPath,
-      dest: queuedFileDefs,
-      allSizes: destPaths,
-      originalImageSize: imageSize(srcFilePath)
-    }
-  });
-  srcFiles.forEach(srcFile => {
-    if (srcFile.dest.length) {
-      console.log(srcFile.dest)
-  
-    }
-  })
-
-
-
-  const queue = srcFiles.filter(srcFile => srcFile.dest.length > 0);
-  const batches = chunkArray(queue, batchSize);
-
-  let totalClones = 0;
-  let newClones = 0;
-
-  srcFiles.forEach(srcFile => {
-    totalClones += srcFile.allSizes.length;
-    newClones += srcFile.dest.length;
-  });
-
-  console.log(chalk.green(`${srcFiles.length} original images in `) + `${path.resolve(process.cwd(), sourceDir)}` + chalk.green(` will result in ${totalClones} responsive images in`) + ` ${path.resolve(process.cwd(), outputDir)}.`);
-  console.log(chalk.green(totalClones - newClones)  + ' already exist', chalk.green(newClones) + ' will be generated now.');
-
-  (async () => {
-    try {
-      for (var batch of batches) {
-        await processBatch(batch).then().catch(err => console.log(err));
-      }
-      if (settings.resizeOriginal) {
-        resizeOriginals();
-      }
-      pruneImages();
-      updateLog(resultSummary, true);
-    } catch(err) {
-      console.log(chalk.red(err))
-    }
-  })();
-
-  function getWidest(fileDefs) {
-    if (fileDefs.length) {
-      return fileDefs.sort((a, b) => {
-        return b.actualDimensions.width - a.actualDimensions.width;
-      })[0];
-    }
-    return;
-  }
-
-  function processBatch(batch) {
-    return new Promise((resolve, reject) => {
-      const filePromises = batch.map(srcFile => processImage(srcFile));
-      Promise.all(filePromises).then(res => {
-        resolve(res);
-      }).catch(err => {
-        reject(err)
-      });
-    });
-  }
-
-  function chunkArray(arr, chunkSize) {
-    return arr.map( function(e,i){ 
-      return i%chunkSize===0 ? arr.slice(i,i+chunkSize) : null; 
-    }).filter(function(e){ return e; });
-  }
-
-
-  function processImage(srcFile) {
-    return new Promise((resolve, reject) => {
-      const widestDest = srcFile.dest.find(item => {
-        return item.widestQueued;
-      });
-      const generalMaxBytes = maxBytesPerPixel * (widestDest.actualDimensions.width * widestDest.actualDimensions.height);
-      let maxBytes;
-      if (generalMaxBytes > srcFile.srcBytes) {
-        maxBytes = srcFile.srcBytes;
-      } else {
-        maxBytes = generalMaxBytes;
-      }
-      const widestCloneOptions = {
-        src: srcFile.absPath, 
-        dest: widestDest.path, 
-        srcMtime: srcFile.srcMtime,
-        dimensions: widestDest.actualDimensions,
-        maxBytes: maxBytes,
-        quality: settings.maxQuality
-      }
-      createLargestClone(widestCloneOptions)
-      .then(createLargestCloneResult => {
-        const others = srcFile.dest.filter(item => {
-          return !item.widestQueued;
-        });
-        const filePromises = [];
-        others.forEach(destOptions => {
-          filePromises.push({
-            src: srcFile.absPath, 
-            dest: destOptions.path, 
-            dimensions: destOptions.actualDimensions,
-            srcMtime: srcFile.srcMtime,
-            quality: createLargestCloneResult.quality,
-            skipExisting: settings.skipExisting === false ? false : true
-          });
-        });
-        Promise.all(filePromises.map(opts => cloneImage(opts)))
-        .then(response => {
-          updateLog(resultSummary);
-          resolve(response);
-        }).catch(err => reject(err));
-      }).catch(err => {
-        reject(err)
-      });
-    });
-  }
-  
-  function resizeOriginals() {
-    srcFiles.forEach(srcFile => {
-      const widestDest = srcFile.allSizes.find(item => item.widestOverall);
-      if (srcFile.originalImageSize.width > widestDest.actualDimensions.width) {
+    const manifest = lib.getFiles(lib.getAbsolutePath(sourceDir))
+      .filter(filePath => isImage(filePath))
+      .filter(filePath => {
         try {
-          fs.copyFileSync(widestDest.path, srcFile.absPath);
-          resultSummary.resizedOriginals.push(srcFile.absPath);
-          updateLog(resultSummary);
-        } catch(err) {
-          console.log(err);
+          imageSize(filePath);
+          return true;
+        } catch (err) {
+          return false;
         }
-      }
-    });
-  }
-
-  function updateLog(resultSummary, isFinal) {
-    let text = [];
-    if (resultSummary.resizedOriginals.length) {
-      text.push(chalk.cyan(`${resultSummary.resizedOriginals.length} originals downsized` ));
-    }
-    if (resultSummary.newClones.length) {
-      text.push(chalk.green(`${resultSummary.newClones.length} of ${newClones} new clones generated, based on ${queue.length} original images` ));
-    }
-    if (resultSummary.deletedImages.length) {
-      text.push(chalk.magenta(`${resultSummary.deletedImages.length} orphaned images deleted` ));
-    }
-    if (resultSummary.deletedDirs.length) {
-      text.push(chalk.magenta(`${resultSummary.deletedDirs.length} orphaned directories deleted` ));
-    }
-    process.stdout.clearLine();
-    process.stdout.cursorTo(0);
-    const endDate = new Date();
-    const elapsed = endDate.getTime() - startDate.getTime();
-    if (isFinal) {
-      if (!text.length) {
-        console.log(chalk.yellow('Responsive image directory - no images to process.'))
-      } else {
-        
-        process.stdout.write(text.join(', ') + ` in ${lib.timeConversion(elapsed)}` +  '\n');
-        if (settings.logPath) {
-          fs.writeFile(settings.logPath, JSON.stringify(resultSummary, null, 2), (err, data) => {
-            if (err) {
-              console.log(err)
-            } else {
-              console.log(`Finished - results logged at ${path.resolve(process.cwd(), settings.logPath)}.`)
-            }
-          });
-        } else {
-          console.log('Finished')
-        }
-        
-      }
-    } else {
-      process.stdout.write(text.join(', ') + ` in ${lib.timeConversion(elapsed)}`);
+      }).map(srcFilePath => {
+        return {
+          original: srcFilePath.replace(process.cwd(), ''),
+          clones: outputFiles.filter(outputFile => {
+            return lib.removeExt(outputFile).replace(absOutputDir, '').startsWith(lib.removeExt(srcFilePath).replace(absSourceDir, ''));
+          }).map(item => {
+            const clonePath = item.replace(process.cwd(), '');
+            return {
+              clonePath: clonePath,
+              cloneSize: lib.removeExt(clonePath).split('-')[lib.removeExt(clonePath).split('-').length - 1]
+            };
+          })
+        };
+      });
+    if (settings.manifestPath) {
+      fs.writeFileSync(settings.manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+      console.log(chalk.green(`Created manifest file at ${settings.manifestPath}`));
     }
   }
-
-  function createLargestClone(opts) {
-    return new Promise((resolve, reject) => {
-      const run = function(opts) {
-        opts.attempts = opts.attempts ||[];
-        
-        genImage(opts).then(data => {
-          opts.attempts.push({
-            quality: opts.quality,
-            bytes: data.size,
-            increment: opts.increment
-          });
-          if (data.size > opts.maxBytes) {
-            if ((opts.quality || maxQuality) > minJpegQuality ) {
-              opts.quality = opts.quality || maxQuality;
-              opts.quality = opts.quality - opts.increment > minJpegQuality ? opts.quality - opts.increment : minJpegQuality;
-              run(opts)
-            } else {
-              resultSummary.newClones.push({
-                file: opts.dest,
-                quality: opts.quality,
-                bytes: opts.attepmts.find(attempt => attempt.quality === opts.quality).bytes
-              });
-              updateLog(resultSummary);
-              resolve(opts);
-            }
-          } else { // Resulting image is smaller than maxBytes
-            if (opts.attempts.length === 1 && opts.attempts[0].quality === maxQuality && opts.attempts[0].bytes <= opts.maxBytes) {
-              
-              resultSummary.newClones.push({
-                file: opts.dest,
-                quality: opts.quality,
-                bytes: opts.attempts.find(attempt => attempt.quality === opts.quality).bytes
-              });
-              updateLog(resultSummary);
-              resolve(opts);
-            } else {
-              const closestTooHigh = opts.attempts.filter(attempt => attempt.bytes > opts.maxBytes).sort((a,b) => a.bytes - b.bytes)[0];
-              if (closestTooHigh && opts.quality && opts.increment > 5 ) {
-                opts.increment = opts.increment/5;
-                opts.quality = closestTooHigh.quality || maxQuality - opts.increment > minJpegQuality ? closestTooHigh.quality - opts.increment : minJpegQuality;
-                run(opts);
-              } else {
-                resultSummary.newClones.push({
-                  file: opts.dest,
-                  quality: opts.quality,
-                  bytes: opts.attempts.find(attempt => attempt.quality === opts.quality).bytes
-                });
-                updateLog(resultSummary);
-                resolve(opts);
-              }
-            }
-          }
-        }).catch(err => reject(err));
-      }
-      opts.increment = 40;
-      run(opts)
-    });
-  }
-  
-  function genImage(opts) {
-    return new Promise((resolve, reject) => {
-      lib.mkdirP(path.dirname(opts.dest));
-      const sharpInstance = sharp(opts.src);
-      sharpInstance.resize(opts.dimensions.width, opts.dimensions.height, {fit: 'inside', withoutEnlargement: true});
-      if (opts.quality) {
-        opts.quality = Math.floor(opts.quality);
-        sharpInstance.jpeg({ quality: opts.quality, progressive: true });
-      }
-      sharpInstance.withMetadata()
-      .toFile(opts.dest)
-      .then( data => { 
-        resolve(data);
-      })
-      .catch( err => { reject(err) });
-    });
-  }
-
-  function cloneImage(opts) {
-    return new Promise((resolve, reject) => {
-      genImage(opts).then(data => {
-        resultSummary.newClones.push({
-          file: opts.dest,
-          quality: opts.quality,
-          bytes: data.size
-        });
-        updateLog(resultSummary);
-        resolve(opts);
-      }).catch(err => {
-        resultSummary.failed.push({
-          file: opts.dest,
-          error: err
-        });
-        updateLog(resultSummary);
-        reject(err);
-      })
-    });
-  }
-  
-  function getOutputSize(input, outputMaxSize) {
-    let inputSize;
-    try {
-      inputSize = imageSize(input);
-    }  catch (err) {
-      console.log(err)
-      inputSize = {};
-    }
-    var inputRatio = inputSize.width/inputSize.height;
-    var heightExcess = inputSize.height/outputMaxSize.maxHeight;
-    var widthExcess = inputSize.width/outputMaxSize.maxWidth;
-    if (heightExcess <= 1 && widthExcess <= 1) {
-      return inputSize;
-    }
-    if (heightExcess >= widthExcess) {
-      return getOther(inputRatio, 'height', outputMaxSize.maxHeight);
-    } else if (widthExcess > heightExcess) {
-      return getOther(inputRatio, 'width', outputMaxSize.maxWidth);
-    }
-  }
-  
-  function getOther(ratio, side, length) {
-    var dimensions = {}
-    dimensions[side] = length;
-    if (side === 'width') {
-      dimensions['height'] = Math.round(length/ratio);
-    } else {
-      dimensions['width'] = Math.round(length*ratio);
-    }
-    return dimensions;
-  }
-
-  function pruneImages() {
-    const outputResponsiveImages = srcFiles.reduce((acc, srcFile) => {
-      return acc.concat(srcFile.allSizes.map(item => item.path))
-    }, [])
-    const outputResponsiveDirs = lib.uniq(outputResponsiveImages.map(outputPath => path.dirname(outputPath)));
-    const existingResponsiveDirs = lib.getDirs(lib.getAbsolutePath(outputDir));
-    var orphanedDirs = existingResponsiveDirs.filter(existingDir => {
-      return !outputResponsiveImages.find(existingImage => existingImage.startsWith(existingDir));
-    });
-    orphanedDirs.forEach(dirPath => {
-      lib.deleteFolderRecursively(dirPath);
-      resultSummary.deletedDirs.push(dirPath);
-      updateLog(resultSummary);
-    });
-    // Remove orphaned files from responsive images directory
-    const existingResponsiveImages = lib.getFiles(lib.getAbsolutePath(outputDir)).sort();
-    var orphanedImages = existingResponsiveImages.filter(existing => outputResponsiveImages.indexOf(existing) < 0);
-    orphanedImages.forEach(filePath => {
-      fs.unlinkSync(filePath);
-      resultSummary.deletedImages.push(filePath);
-      updateLog(resultSummary);
-    });
-  }
-}
+};
 

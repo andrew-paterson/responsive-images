@@ -1,6 +1,6 @@
 {
   "name": "responsive-image-directory",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Given a `src` directory of images, the script creates a clone of the directory and its contained images at the provided `dest` path, but with multiple sizes of each image, based on the sizes specified in the settings.",
   "main": "index.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "test": "test"
   },
   "devDependencies": {
+    "eslint": "^8.7.0",
     "tag-and-release": "^1.0.14"
   },
   "repository": {

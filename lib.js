@@ -7,6 +7,10 @@ var nodeUrl = require('url');
 // var tomlify = require('tomlify-j0.4');
 
 module.exports = {
+
+  removeExt(filePath) {
+    return path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath)));
+  },
   logJSToFile(outPut, filePath = 'log.json') {
     if (!outPut) { return; }
     fs.writeFile(filePath, JSON.stringify(outPut, null, 2), function (err) {
