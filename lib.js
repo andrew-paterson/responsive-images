@@ -8,7 +8,7 @@ var nodeUrl = require('url');
 
 module.exports = {
 
-  removeExt(filePath) {
+  removeExt(filePath) { // In node utils
     return path.join(path.dirname(filePath), path.basename(filePath, path.extname(filePath)));
   },
   logJSToFile(outPut, filePath = 'log.json') {
