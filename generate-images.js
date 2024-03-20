@@ -273,7 +273,7 @@ module.exports = function (settings) {
                   resultSummary.newClones.push({
                     file: opts.dest,
                     quality: opts.quality,
-                    bytes: opts.attepmts.find((attempt) => attempt.quality === opts.quality).bytes,
+                    bytes: opts.attempts.find((attempt) => attempt.quality === opts.quality).bytes,
                   });
                   updateLog(resultSummary);
                   resolve(opts);
@@ -318,10 +318,11 @@ module.exports = function (settings) {
         lib.mkdirP(path.dirname(opts.dest));
         const sharpInstance = sharp(opts.src);
         sharpInstance.resize(opts.dimensions.width, opts.dimensions.height, { fit: 'inside', withoutEnlargement: true });
-        if (opts.quality) {
+        if (opts.quality && ['.jpg', '.jpeg'].includes(path.extname(opts.src).toLowerCase())) {
           opts.quality = Math.floor(opts.quality);
           sharpInstance.jpeg({ quality: opts.quality, progressive: true });
         }
+
         sharpInstance
           .withMetadata()
           .toFile(opts.dest)
