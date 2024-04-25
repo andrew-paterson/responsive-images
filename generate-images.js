@@ -34,6 +34,7 @@ module.exports = function (settings) {
     const srcFiles = lib
       .getFiles(lib.getAbsolutePath(sourceDir))
       .filter((filePath) => isImage(filePath))
+      .filter((filePath) => path.extname(filePath).toLowerCase() !== '.svg')
       .filter((filePath) => {
         try {
           imageSize(filePath);
@@ -83,7 +84,6 @@ module.exports = function (settings) {
           originalImageSize: imageSize(srcFilePath),
         };
       });
-
     const queue = srcFiles.filter((srcFile) => srcFile.dest.length > 0);
     const batches = chunkArray(queue, batchSize);
     let totalClones = 0;
@@ -105,7 +105,7 @@ module.exports = function (settings) {
             .catch((err) => console.log(err));
         }
         if (settings.resizeOriginal) {
-          resizeOriginals();
+          resizeOriginals(); // TODO don't run if batching image failed
         }
         pruneImages();
         updateLog(resultSummary, true);
@@ -327,9 +327,11 @@ module.exports = function (settings) {
           .withMetadata()
           .toFile(opts.dest)
           .then((data) => {
+            opts.toFileStatus = 'success';
             resolve(data);
           })
           .catch((err) => {
+            opts.toFileStatus = 'failed';
             reject(err);
           });
       });
