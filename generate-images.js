@@ -316,7 +316,7 @@ module.exports = function (settings) {
     function genImage(opts) {
       return new Promise((resolve, reject) => {
         lib.mkdirP(path.dirname(opts.dest));
-        const sharpInstance = sharp(opts.src);
+        const sharpInstance = sharp(opts.src, { animated: true }); // animated: true ensures that all frames are oncluded for animated gifs
         sharpInstance.resize(opts.dimensions.width, opts.dimensions.height, { fit: 'inside', withoutEnlargement: true });
         if (opts.quality && ['.jpg', '.jpeg'].includes(path.extname(opts.src).toLowerCase())) {
           opts.quality = Math.floor(opts.quality);
